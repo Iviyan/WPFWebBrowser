@@ -1,6 +1,8 @@
-﻿using CefSharp.Wpf;
+﻿using CefSharp;
+using CefSharp.Wpf;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,7 +23,8 @@ namespace WebBrowser
     /// </summary>
     public partial class MainWindow : Window
     {
-        List<(DateTime dateTime, string address)> history = new();
+        ObservableCollection<HistoryItem> history = new();
+        HistoryWindow historyWindow;
 
         Dictionary<ChromiumWebBrowser, TabItem> browserTab = new();
 
@@ -31,6 +34,7 @@ namespace WebBrowser
         {
             InitializeComponent();
 
+            historyWindow = new(history);
             MoreMenu = this.Resources["More"] as ContextMenu;
 
             AddTab("yandex.ru");
@@ -87,11 +91,13 @@ namespace WebBrowser
             }
         }
 
+        static BrowserLifeSpanHandler browserLifeSpanHandler = new();
         private ChromiumWebBrowser CreateBrowser()
         {
             ChromiumWebBrowser browser = new();
             browser.AddressChanged += Browser_AddressChanged;
             browser.TitleChanged += Browser_TitleChanged;
+            browser.LifeSpanHandler = browserLifeSpanHandler;
             return browser;
         }
 
@@ -103,7 +109,6 @@ namespace WebBrowser
         private void AddTab(string url = null)
         {
             ChromiumWebBrowser browser = CreateBrowser();
-            if (url != null) browser.Address = url;
 
             TabItem tab = new();
             tab.Header = "Новая вкладка";
@@ -111,6 +116,8 @@ namespace WebBrowser
             Tabs.Items.Add(tab);
 
             browserTab[browser] = tab;
+
+            if (url != null) browser.Address = url;
         }
 
         private void Browser_TitleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -122,7 +129,10 @@ namespace WebBrowser
 
         private void Browser_AddressChanged(object sender, DependencyPropertyChangedEventArgs e)
         {
-            history.Add((DateTime.Now, e.NewValue as string));
+            history.Add(new(e.NewValue as string));
+            var br = sender as ChromiumWebBrowser;
+            var tab = browserTab[br];
+            if (tab == Tabs.SelectedItem) UrlTB.Text = br.Address;
         }
 
 
@@ -156,7 +166,7 @@ namespace WebBrowser
             browserTab[newBr] = newTab;
         }
 
-        private void Button_Click(object sender, RoutedEventArgs e)
+        private void MoreButton_Click(object sender, RoutedEventArgs e)
         {
             MoreMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
             MoreMenu.PlacementTarget = sender as UIElement;
@@ -167,15 +177,102 @@ namespace WebBrowser
         {
             Tabs.Items.Clear();
         }
-
         private void CloseAllTabsCommand_CanExecute(object sender, CanExecuteRoutedEventArgs e)
         {
             e.CanExecute = Tabs.Items.Count > 0;
         }
-
-        private void CommandBinding_CanExecute_True(object sender, CanExecuteRoutedEventArgs e)
+        
+        private void ShowHistoryCommand_Executed(object sender, ExecutedRoutedEventArgs e)
         {
-            e.CanExecute = true;
+            historyWindow.Show();
+        }
+
+        private void UpdateButton_Click(object sender, RoutedEventArgs e)
+        {
+            var br = Tabs.SelectedContent as ChromiumWebBrowser;
+            br.Reload();
+        }
+
+        private void BackButton_Click(object sender, RoutedEventArgs e) =>
+            (Tabs.SelectedContent as ChromiumWebBrowser).Back();
+        
+        private void ForwardButton_Click(object sender, RoutedEventArgs e) =>
+            (Tabs.SelectedContent as ChromiumWebBrowser).Back();
+
+        static BooleanToVisibilityConverter booleanToVisibilityConverter = new();
+        private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Visibility="{Binding IsLoading, ElementName=Browser, Converter={StaticResource BooleanToVisibilityConverter}}" 
+            // IsIndeterminate="{Binding IsLoading, ElementName=Browser}"
+            var br = Tabs.SelectedContent as ChromiumWebBrowser;
+
+            UrlTB.Text = br.Address;
+
+            Binding statusBind = new Binding();
+            statusBind.Source = br;
+            statusBind.Path = new PropertyPath(ChromiumWebBrowser.IsLoadingProperty);
+            LoadingBar.SetBinding(ProgressBar.IsIndeterminateProperty, statusBind);
+            
+            Binding visBind = new Binding();
+            visBind.Source = br;
+            visBind.Path = new PropertyPath(ChromiumWebBrowser.IsLoadingProperty);
+            visBind.Converter = booleanToVisibilityConverter;
+
+            LoadingBar.SetBinding(ProgressBar.VisibilityProperty, visBind);
+        }
+
+        private void IncognitoCommand_Executed(object sender, ExecutedRoutedEventArgs e)
+        {
+            var tab = e.Parameter as TabItem;
+                var br = tab.Content as ChromiumWebBrowser;
+
+            if (tab.Tag != null && tab.Tag.Equals(true))
+            {
+                br.AddressChanged += Browser_AddressChanged;
+                tab.Tag = null;
+                //tab.Background = new SolidColorBrush(Colors.White);
+            } else
+            {
+                br.AddressChanged -= Browser_AddressChanged;
+                tab.Tag = true;
+                //tab.Background = new SolidColorBrush(Colors.Black);
+
+            }
+        }
+
+        private void Window_Closed(object sender, EventArgs e)
+        {
+            Application.Current.Shutdown();
+        }
+
+        private void PrintButton_Click(object sender, RoutedEventArgs e) =>
+            (Tabs.SelectedContent as ChromiumWebBrowser).Print();
+    }
+
+    public class BrowserLifeSpanHandler : ILifeSpanHandler
+    {
+        public bool OnBeforePopup(IWebBrowser browserControl, IBrowser browser, IFrame frame, string targetUrl, string targetFrameName,
+            WindowOpenDisposition targetDisposition, bool userGesture, IPopupFeatures popupFeatures, IWindowInfo windowInfo,
+            IBrowserSettings browserSettings, ref bool noJavascriptAccess, out IWebBrowser newBrowser)
+        {
+            newBrowser = null;
+            browserControl.Load(targetUrl);
+            return true;
+        }
+
+        public void OnAfterCreated(IWebBrowser browserControl, IBrowser browser)
+        {
+            //
+        }
+
+        public bool DoClose(IWebBrowser browserControl, IBrowser browser)
+        {
+            return false;
+        }
+
+        public void OnBeforeClose(IWebBrowser browserControl, IBrowser browser)
+        {
+            //nothing
         }
     }
 }

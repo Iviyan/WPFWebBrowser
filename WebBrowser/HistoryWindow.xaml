@@ -1,0 +1,29 @@
+﻿<Window x:Class="WebBrowser.HistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:local="clr-namespace:WebBrowser"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        Title="История"
+        Width="400"
+        Height="450"
+        Closing="Window_Closing"
+        mc:Ignorable="d">
+    <Grid>
+        <ListBox x:Name="HistoryLB">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="{x:Type local:HistoryItem}">
+                    <Grid x:Name="TGrid" Margin="1px">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="auto" />
+                            <ColumnDefinition />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="{Binding DateTime, StringFormat={}{0:dd.MM.yyyy HH:mm:ss}}" Margin="0 0 12px 0"/>
+                        <TextBlock Grid.Column="1" Text="{Binding Address}" />
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</Window>
